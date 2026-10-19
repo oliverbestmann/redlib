@@ -4,62 +4,39 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    crane.url = "github:ipetkov/crane";
-
     flake-utils.url = "github:numtide/flake-utils";
-
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { nixpkgs, crane, flake-utils, rust-overlay, ... }:
-    flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
+  outputs = { nixpkgs, flake-utils, ... }:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ (import rust-overlay) ];
-        };
+        pkgs = nixpkgs.legacyPackages.${system};
 
-        inherit (pkgs) lib;
-
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          targets = [ "x86_64-unknown-linux-musl" ];
-        };
-
-        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
-
-
-        src = lib.cleanSourceWith {
-          src = craneLib.path ./.;
-          filter = path: type:
-            (lib.hasInfix "/templates/" path) ||
-            (lib.hasInfix "/static/" path) ||
-            (craneLib.filterCargoSources path type);
-        };
-
-        redlib = craneLib.buildPackage {
-          inherit src;
-          strictDeps = true;
+        redlib = pkgs.rustPlatform.buildRustPackage {
+          pname = "redlib";
+          version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
+          src = pkgs.lib.cleanSource ./.;
+          cargoLock.lockFile = ./Cargo.lock;
           doCheck = false;
 
-          CARGO_BUILD_TARGET = "x86_64-unknown-linux-musl";
-          CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+          # boring-sys2 (via wreq) patches and builds BoringSSL from source
+          nativeBuildInputs = with pkgs; [ git cmake rustPlatform.bindgenHook ];
         };
       in
       {
-        checks = {
-          my-crate = redlib;
-        };
+        checks.default = redlib;
 
         packages.default = redlib;
-        packages.docker = pkgs.dockerTools.buildImage {
+        packages.docker = pkgs.dockerTools.buildLayeredImage {
           name = "quay.io/redlib/redlib";
           tag = "latest";
           created = "now";
-          copyToRoot = with pkgs.dockerTools; [ caCertificates fakeNss ];
-          config.Cmd = "${redlib}/bin/redlib";
+          contents = with pkgs.dockerTools; [ caCertificates fakeNss ];
+          config.Cmd = [ "${redlib}/bin/redlib" ];
+        };
+
+        devShells.default = pkgs.mkShell {
+          inputsFrom = [ redlib ];
         };
       });
 }
