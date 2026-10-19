@@ -698,6 +698,25 @@ where
 #[include = "*.css"]
 pub struct ThemeAssets;
 
+/// The served stylesheet: style.css followed by all themes.
+pub static STYLE: LazyLock<String> = LazyLock::new(|| {
+	let mut style = include_str!("../static/style.css").to_string();
+	for file in ThemeAssets::iter() {
+		style.push('\n');
+		let theme = ThemeAssets::get(file.as_ref()).unwrap();
+		style.push_str(std::str::from_utf8(theme.data.as_ref()).unwrap());
+	}
+	style
+});
+
+/// Content hash of STYLE, used as a cache buster in the stylesheet URL.
+pub static STYLE_HASH: LazyLock<String> = LazyLock::new(|| {
+	use std::hash::{DefaultHasher, Hash, Hasher};
+	let mut hasher = DefaultHasher::new();
+	STYLE.hash(&mut hasher);
+	format!("{:016x}", hasher.finish())
+});
+
 impl Preferences {
 	/// Build preferences from cookies
 	pub fn new(req: &Request<Body>) -> Self {

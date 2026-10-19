@@ -11,7 +11,7 @@ use hyper::{header::HeaderValue, Body, Request, Response};
 use log::{info, warn};
 use redlib::client::{canonical_path, proxy, rate_limit_check, CLIENT};
 use redlib::server::{self, RequestExt};
-use redlib::utils::{error, redirect, ThemeAssets};
+use redlib::utils::{error, redirect, STYLE};
 use redlib::{config, duplicates, headers, instance_info, post, search, settings, subreddit, user};
 
 use redlib::client::OAUTH_CLIENT;
@@ -90,18 +90,12 @@ async fn resource(body: &str, content_type: &str, cache: bool) -> Result<Respons
 }
 
 async fn style() -> Result<Response<Body>, String> {
-	let mut res = include_str!("../static/style.css").to_string();
-	for file in ThemeAssets::iter() {
-		res.push('\n');
-		let theme = ThemeAssets::get(file.as_ref()).unwrap();
-		res.push_str(std::str::from_utf8(theme.data.as_ref()).unwrap());
-	}
 	Ok(
 		Response::builder()
 			.status(200)
 			.header("content-type", "text/css")
 			.header("Cache-Control", "public, max-age=1209600, s-maxage=86400")
-			.body(res.to_string().into())
+			.body(STYLE.as_str().into())
 			.unwrap_or_default(),
 	)
 }
